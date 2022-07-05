@@ -14,15 +14,10 @@ project "spirv_cross"
 	}
 
 	files {
-		"./**.h",
-		"./**.c",
-		"./**.hpp",
-		"./**.cpp"
-	}
-
-	excludes {
-		"./samples/**.c",
-		"./samples/**.cpp",
+		"./*.h",
+		"./*.c",
+		"./*.hpp",
+		"./*.cpp"
 	}
 
  	filter "system:windows"
