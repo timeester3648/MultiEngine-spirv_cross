@@ -10,7 +10,7 @@ project "spirv_cross"
 
 	includedirs {
 		"%{IncludeDir.spirv_cross}",
-		"%{IncludeDir.spirv}/spirv/unified1"
+		"%{IncludeDir.spirv_headers}/spirv/unified1"
 	}
 
 	files {
@@ -18,6 +18,11 @@ project "spirv_cross"
 		"./**.c",
 		"./**.hpp",
 		"./**.cpp"
+	}
+
+	excludes {
+		"./samples/**.c",
+		"./samples/**.cpp",
 	}
 
  	filter "system:windows"
