@@ -145,6 +145,12 @@ public:
 		// compares.
 		bool relax_nan_checks = false;
 
+		// Loading row-major matrices from UBOs on older AMD Windows OpenGL drivers is problematic.
+		// To load these types correctly, we must generate a wrapper. them in a dummy function which only purpose is to
+		// ensure row_major decoration is actually respected.
+		// This workaround may cause significant performance degeneration on some Android devices.
+		bool enable_row_major_load_workaround = true;
+
 		// If non-zero, controls layout(num_views = N) in; in GL_OVR_multiview2.
 		uint32_t ovr_multiview_view_count = 0;
 
@@ -364,7 +370,7 @@ protected:
 	virtual void emit_function_prototype(SPIRFunction &func, const Bitset &return_flags);
 
 	SPIRBlock *current_emitting_block = nullptr;
-	SPIRBlock *current_emitting_switch = nullptr;
+	SmallVector<SPIRBlock *> current_emitting_switch_stack;
 	bool current_emitting_switch_fallthrough = false;
 
 	virtual void emit_instruction(const Instruction &instr);
