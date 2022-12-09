@@ -21,4 +21,4 @@ project "spirv_cross"
 	}
 
 	filter "action:vs*"
-		disablewarnings { "4996", "4065" }
+		disablewarnings { "4996", "4065", "4805" }
