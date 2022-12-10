@@ -20,5 +20,5 @@ project "spirv_cross"
 		"./*.cpp"
 	}
 
-	filter "action:vs*"
+	filter "toolset:msc"
 		disablewarnings { "4996", "4065", "4805" }
