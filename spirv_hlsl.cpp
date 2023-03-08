@@ -3494,9 +3494,9 @@ void CompilerHLSL::emit_texture_op(const Instruction &i, bool sparse)
 	else
 	{
 		auto &imgformat = get<SPIRType>(imgtype.image.type);
-		if (imgformat.basetype != SPIRType::Float)
+		if (hlsl_options.shader_model < 67 && imgformat.basetype != SPIRType::Float)
 		{
-			SPIRV_CROSS_THROW("Sampling non-float textures is not supported in HLSL.");
+			SPIRV_CROSS_THROW("Sampling non-float textures is not supported in HLSL SM < 6.7.");
 		}
 
 		if (hlsl_options.shader_model >= 40)
@@ -4124,10 +4124,16 @@ void CompilerHLSL::emit_glsl_op(uint32_t result_type, uint32_t id, uint32_t eop,
 		emit_unary_func_op(result_type, id, args[0], "round");
 		break;
 
+	case GLSLstd450Trunc:
+		emit_unary_func_op(result_type, id, args[0], "trunc");
+		break;
+
 	case GLSLstd450Acosh:
 	case GLSLstd450Asinh:
 	case GLSLstd450Atanh:
-		SPIRV_CROSS_THROW("Inverse hyperbolics are not supported on HLSL.");
+		// These are not supported in HLSL, always emulate them.
+		emit_emulated_ahyper_op(result_type, id, args[0], op);
+		break;
 
 	case GLSLstd450FMix:
 	case GLSLstd450IMix:
