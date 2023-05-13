@@ -2142,8 +2142,7 @@ void CompilerMSL::extract_global_variables_from_function(uint32_t func_id, std::
 				func.add_parameter(type_id, next_id, true);
 				set<SPIRVariable>(next_id, type_id, StorageClassFunction, 0, arg_id);
 
-				// Ensure the existing variable has a valid name and the new variable has all the same meta info
-				set_name(arg_id, ensure_valid_name(to_name(arg_id), "v"));
+				// Ensure the new variable has all the same meta info
 				ir.meta[next_id] = ir.meta[arg_id];
 			}
 		}
@@ -9604,7 +9603,7 @@ bool CompilerMSL::maybe_emit_array_assignment(uint32_t id_lhs, uint32_t id_rhs)
 {
 	// We only care about assignments of an entire array
 	auto &type = expression_type(id_rhs);
-	if (type.array.size() == 0)
+	if (!type_is_top_level_array(get_pointee_type(type)))
 		return false;
 
 	auto *var = maybe_get<SPIRVariable>(id_lhs);
@@ -10332,7 +10331,7 @@ void CompilerMSL::emit_function_prototype(SPIRFunction &func, const Bitset &)
 			{
 				if (arg_type.array.empty())
 				{
-					decl += join(", ", sampler_type(arg_type, arg.id), " ", to_sampler_expression(arg.id));
+					decl += join(", ", sampler_type(arg_type, arg.id), " ", to_sampler_expression(name_id));
 				}
 				else
 				{
@@ -10340,7 +10339,8 @@ void CompilerMSL::emit_function_prototype(SPIRFunction &func, const Bitset &)
 							descriptor_address_space(name_id,
 							                         StorageClassUniformConstant,
 							                         "thread const");
-					decl += join(", ", sampler_address_space, " ", sampler_type(arg_type, arg.id), "& ", to_sampler_expression(arg.id));
+					decl += join(", ", sampler_address_space, " ", sampler_type(arg_type, name_id), "& ",
+					             to_sampler_expression(name_id));
 				}
 			}
 		}
@@ -10350,7 +10350,7 @@ void CompilerMSL::emit_function_prototype(SPIRFunction &func, const Bitset &)
 		    !is_dynamic_img_sampler)
 		{
 			bool arg_is_array = !arg_type.array.empty();
-			decl += join(", constant uint", arg_is_array ? "* " : "& ", to_swizzle_expression(arg.id));
+			decl += join(", constant uint", arg_is_array ? "* " : "& ", to_swizzle_expression(name_id));
 		}
 
 		if (buffer_requires_array_length(name_id))
@@ -14550,7 +14550,7 @@ string CompilerMSL::type_to_glsl(const SPIRType &type, uint32_t id, bool member)
 	string type_name;
 
 	// Pointer?
-	if (type.pointer)
+	if (type_is_top_level_pointer(type) || type_is_array_of_pointers(type))
 	{
 		assert(type.pointer_depth > 0);
 
@@ -14573,7 +14573,17 @@ string CompilerMSL::type_to_glsl(const SPIRType &type, uint32_t id, bool member)
 			while (type_is_pointer(*p_parent_type))
 				p_parent_type = &get<SPIRType>(p_parent_type->parent_type);
 
+			// If we're emitting BDA, just use the templated type.
+			// Emitting builtin arrays need a lot of cooperation with other code to ensure
+			// the C-style nesting works right.
+			// FIXME: This is somewhat of a hack.
+			bool old_is_using_builtin_array = is_using_builtin_array;
+			if (type_is_top_level_physical_pointer(type))
+				is_using_builtin_array = false;
+
 			type_name = join(type_address_space, " ", type_to_glsl(*p_parent_type, id));
+
+			is_using_builtin_array = old_is_using_builtin_array;
 		}
 
 		switch (type.basetype)
@@ -17280,41 +17290,44 @@ void CompilerMSL::analyze_argument_buffers()
 			// member_index and next_arg_buff_index are incremented when padding members are added.
 			if (msl_options.pad_argument_buffer_resources)
 			{
-				while (resource.index > next_arg_buff_index)
+				if (!resource.descriptor_alias)
 				{
-					auto &rez_bind = get_argument_buffer_resource(desc_set, next_arg_buff_index);
-					switch (rez_bind.basetype)
+					while (resource.index > next_arg_buff_index)
 					{
-					case SPIRType::Void:
-					case SPIRType::Boolean:
-					case SPIRType::SByte:
-					case SPIRType::UByte:
-					case SPIRType::Short:
-					case SPIRType::UShort:
-					case SPIRType::Int:
-					case SPIRType::UInt:
-					case SPIRType::Int64:
-					case SPIRType::UInt64:
-					case SPIRType::AtomicCounter:
-					case SPIRType::Half:
-					case SPIRType::Float:
-					case SPIRType::Double:
-						add_argument_buffer_padding_buffer_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
-						break;
-					case SPIRType::Image:
-						add_argument_buffer_padding_image_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
-						break;
-					case SPIRType::Sampler:
-						add_argument_buffer_padding_sampler_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
-						break;
-					case SPIRType::SampledImage:
-						if (next_arg_buff_index == rez_bind.msl_sampler)
-							add_argument_buffer_padding_sampler_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
-						else
+						auto &rez_bind = get_argument_buffer_resource(desc_set, next_arg_buff_index);
+						switch (rez_bind.basetype)
+						{
+						case SPIRType::Void:
+						case SPIRType::Boolean:
+						case SPIRType::SByte:
+						case SPIRType::UByte:
+						case SPIRType::Short:
+						case SPIRType::UShort:
+						case SPIRType::Int:
+						case SPIRType::UInt:
+						case SPIRType::Int64:
+						case SPIRType::UInt64:
+						case SPIRType::AtomicCounter:
+						case SPIRType::Half:
+						case SPIRType::Float:
+						case SPIRType::Double:
+							add_argument_buffer_padding_buffer_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
+							break;
+						case SPIRType::Image:
 							add_argument_buffer_padding_image_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
-						break;
-					default:
-						break;
+							break;
+						case SPIRType::Sampler:
+							add_argument_buffer_padding_sampler_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
+							break;
+						case SPIRType::SampledImage:
+							if (next_arg_buff_index == rez_bind.msl_sampler)
+								add_argument_buffer_padding_sampler_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
+							else
+								add_argument_buffer_padding_image_type(buffer_type, member_index, next_arg_buff_index, rez_bind);
+							break;
+						default:
+							break;
+						}
 					}
 				}
 
