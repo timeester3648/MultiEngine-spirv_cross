@@ -21,6 +21,8 @@ void main(MultiBuild::Workspace& workspace) {
 		"./*.hpp",
 		"./*.cpp"
 	});
+
+	properties.excluded_files("./main.cpp");
 	
 	{
 		MultiBuild::ScopedFilter _(project, "project.compiler:VisualCpp");
